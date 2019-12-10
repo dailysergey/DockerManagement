@@ -1,0 +1,2 @@
+﻿# Management Docker containers via [Docker Engine API](https://docs.docker.com/engine/api/v1.30/)
+** The Engine API is an HTTP API served by Docker Engine. It is the API the Docker client uses to communicate with the Engine, so everything the Docker client can do can be done with the API. Most of the client's commands map directly to API endpoints (e.g. docker ps is GET /containers/json). The notable exception is running containers, which consists of several API calls.
