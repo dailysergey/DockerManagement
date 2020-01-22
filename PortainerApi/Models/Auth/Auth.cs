@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace PortainerApi.Models.Auth
+﻿namespace PortainerApi.Models.Auth
 {
 
     public class Credentials

@@ -1,8 +1,6 @@
 ﻿using Docker.DotNet.Models;
 using System;
-using System.Collections.Generic;
 using System.Runtime.Serialization;
-using System.Text;
 
 namespace PortainerApi.Models.Task
 {
@@ -28,7 +26,7 @@ namespace PortainerApi.Models.Task
         [DataMember(Name = "State")]
         public string State { get; set; }
         [DataMember(Name = "ContainerStatus")]
-        public ContainerStatus ContainerStatus{get;set;}
+        public ContainerStatus ContainerStatus { get; set; }
     }
 
 }
