@@ -3,7 +3,6 @@ using Newtonsoft.Json;
 using PortainerApi.Models;
 using PortainerApi.Models.Auth;
 using PortainerApi.Models.Node;
-using PortainerApi.Models.Task;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,95 +16,122 @@ namespace PortainerApi
 
     class Program
     {
-        private string JWT;
-        private HttpClient client;
+
         static async Task Main()
         {
             try
             {
                 string hostAddress = "192.168.1.30";//"ip_ubuntu_machine";
-                Program p = new Program();
-                await p.QueryPerform(hostAddress);
+                PortainerApi p = new PortainerApi(hostAddress);
+                await p.QueryPerform();
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
         }
+    }
+    public class PortainerApi
+    {
+        private string JWT;
+        private HttpClient client;
+        private string hostAddress;
+        public PortainerApi(string _hostAddress)
+        {
+            hostAddress = _hostAddress;
+            client = new HttpClient();
+            client.BaseAddress = new Uri($"http://{hostAddress}:9000");
+            PortainerAuthAsync();
+
+        }
 
         /// <summary>
         /// Testing project 
         /// Main Endpoint of application
-        /// <para>1. Authorize</para>
-        /// <para>2. Get list of all working containers</para>
-        /// <para>3. Foreach container inspect detailed healthcheck</para>
+        /// <para>1. Получаем список севрисов</para>
+        /// <para>2. Для каждого сервиса определяем количество и статусы запущенных задач</para>
+        /// <para>3. Для каждой запущенной задачи инспектируем контейнер</para>
         /// </summary>
         /// <param name="hostAddress">Remote IP address</param>
-        /// <returns>List of containers with their healthchecks</returns>
-        async public Task<List<MonitorPad>> QueryPerform(string hostAddress)
+        /// <returns>IEnumerable of MonitorPad with their healthchecks</returns>
+        async public Task<IEnumerable<MonitorPad>> QueryPerform()
         {
             try
             {
-                using (client = new HttpClient())
+                if (string.IsNullOrEmpty(JWT))
                 {
-                    client.BaseAddress = new Uri($"http://{hostAddress}:9000");
-                    PortainerAuthAsync();
-                    if (string.IsNullOrEmpty(JWT))
-                        throw new Exception("UnAuthorized!");
-                    var nodes = await GetNodesAsync();
-                    List<MonitorPad> monitorStates = new List<MonitorPad>();
+                    Console.WriteLine("JWT токен отсутствует!");
+                    throw new Exception("UnAuthorized!");
+                }
+                if (string.IsNullOrEmpty(hostAddress))
+                {
+                    Console.WriteLine("Host Address отсутствует!");
+                    throw new Exception("HostAddress is empty!");
+                }
 
-                    var services = await GetServicesAsync();
-                    foreach (var service in services)
+                List<MonitorPad> monitorStates = new List<MonitorPad>();
+
+                //Получаем все сервисы
+                var services = await GetServicesAsync();
+                foreach (var service in services)
+                {
+                    //Заполняем информацию об одном сервисе
+                    MonitorPad monitorState = new MonitorPad
                     {
-                        MonitorPad monitorState = new MonitorPad
-                        {
-                            ServiceName = service.Spec.Name,
-                            ServiceCreatedAt = service.CreatedAt,
-                            ServiceID = service.ID
-                        };
+                        ServiceName = service.Spec.Name,
+                        ServiceCreatedAt = service.CreatedAt,
+                        ServiceUpdatedAt = service.UpdatedAt,
+                        ServiceID = service.ID
+                    };
+                    //Получаем информацию о задачах, которые обрабатывают этот сервис
+                    var tasksByID = await GetTaskByServiceIDAsync(service.ID);
 
-                        var tasksByID = await GetTaskByServiceIDAsync(service.ID);
-                        monitorState.desiredAppCount = tasksByID.Count > 0 ? tasksByID.Count : 0;
-                        foreach (var task in tasksByID)
+                    foreach (var task in tasksByID)
+                    {
+                        if (task.Status.State == TaskState.Running || task.Status.State == TaskState.Complete)
                         {
-                            if (task.Status.State.Equals("running"))
+                            monitorState.isAlive = true;
+                            monitorState.actualAppCount++;
+                            monitorState.ContainerID = task.Status.ContainerStatus.ContainerID;
+                            monitorState.taskState = task.Status.State;
+                            monitorState.desiredAppCount = service.Spec.TaskTemplate.Placement.Constraints.Count;
+                            //Получение Количества задач
+                            if (task.Slot > 0)
+                                monitorState.desiredAppCount = (int)task.Slot;
+                            else
+                                monitorState.desiredAppCount = task.Spec.Placement.Constraints.Count;
+                            //Выставим в качестве времени создания контейнера - время создания задачи
+                            monitorState.containerCreatedAt = task.CreatedAt;
+
+                            //Получаем информацию о контейнере рассматриваемой задачи
+                            var containerInfo = await GetContainerInfoByIDAsync(task.Status.ContainerStatus.ContainerID);
+                            if (containerInfo != null)
                             {
-                                monitorState.isAlive = true;
-                                monitorState.actualAppCount++;
-                                monitorState.StackName = nodes.Find(x => x.ID.Equals(task.NodeID)).Description.Hostname;
-                                monitorState.ContainerID = task.Status.ContainerStatus.ContainerID;
-                                var containerInfo = await GetContainerInfoByIDAsync(task.Status.ContainerStatus.ContainerID);
-                                if (containerInfo != null)
-                                {
-                                    monitorState.containerCreatedAt = containerInfo.Created;
-                                    monitorState.healthStatus = containerInfo.State.Status;
-                                    var healthContainer = containerInfo.State.Health;
-                                    if (healthContainer != null && healthContainer.Log.Count > 0)
-                                    {
-                                        monitorState.healthOutput = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].Output;
-                                        monitorState.lastHealthCheck = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].End;
-                                    }
+                                monitorState.containerCreatedAt = containerInfo.Created;
+                                monitorState.healthStatus = containerInfo.State.Status;
 
-                                }
-                                else
+                                //Проверяем присутствие HealthCheck-функционала
+                                var healthContainer = containerInfo.State.Health;
+                                if (healthContainer != null && healthContainer.Log.Count > 0)
                                 {
-                                    var taskContainer = await GetTaskByIDAsync(task.ID);
-                                    monitorState.containerCreatedAt = taskContainer.CreatedAt;
-                                    monitorState.healthStatus = task.Status.State;
+                                    monitorState.healthOutput = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].Output;
+                                    monitorState.lastHealthCheck = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].End;
                                 }
                             }
                         }
+                        //Проверяем наличие Имени Stack-а и имени образа данного контейнера
                         if (service.Spec.Labels != null && service.Spec.Labels.Count > 0 && service.Spec.Labels.ContainsKey("com.docker.stack.namespace"))
                         {
                             monitorState.StackName = service.Spec.Labels["com.docker.stack.namespace"];
                             if (service.Spec.Labels.ContainsKey("com.docker.stack.image"))
                                 monitorState.ImageName = service.Spec.Labels["com.docker.stack.image"];
+                            else
+                                monitorState.ImageName = "Не указан";
                         }
-                        monitorStates.Add(monitorState);
                     }
-                    return monitorStates;
+                    monitorStates.Add(monitorState);
                 }
+                return monitorStates;
             }
             catch (Exception e)
             {
@@ -130,21 +156,21 @@ namespace PortainerApi
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 var content = JsonConvert.SerializeObject(model);
-                Console.WriteLine(content);
                 HttpContent httpContent = new StringContent(content, Encoding.UTF8, "application/json");
                 Uri portainerAddress = new Uri(client.BaseAddress + string.Format("api/auth"));
-                Console.WriteLine(portainerAddress.ToString());
                 var resp = client.PostAsync(portainerAddress, httpContent).Result;
                 if (resp.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("In Success Status Code");
                     var stream = await resp.Content.ReadAsStreamAsync();
-                    using StreamReader sr = new StreamReader(stream);
-                    using var jsonResult = new JsonTextReader(sr);
-                    JsonSerializer ser = new JsonSerializer();
-                    JWT = ser.Deserialize<AuthSuccess>(jsonResult).JWT;
+                    using (StreamReader sr = new StreamReader(stream))
+                    {
+                        using (var jsonResult = new JsonTextReader(sr))
+                        {
+                            JsonSerializer ser = new JsonSerializer();
+                            JWT = ser.Deserialize<AuthSuccess>(jsonResult).JWT;
+                        }
+                    }
                 }
-                Console.WriteLine("NO Success. PortainerAuthAsync:" + resp.ReasonPhrase);
             }
             catch (HttpRequestException e)
             {
@@ -164,7 +190,7 @@ namespace PortainerApi
         /// </summary>
         /// <param name="jwt">Token for authorization</param>
         /// <returns></returns>
-        async private Task<List<Node>> GetNodesAsync()
+        async private Task<IEnumerable<Node>> GetNodesAsync()
         {
             try
             {
@@ -178,12 +204,7 @@ namespace PortainerApi
                     var bytes = await resp.Content.ReadAsByteArrayAsync();
                     return System.Text.Json.JsonSerializer.Deserialize<List<Node>>(bytes);
                 }
-                else
-                {
-                    Console.WriteLine("No Success. GetNodeAsync: " + resp.ReasonPhrase);
-                    return null;
-                }
-
+                return null;
             }
             catch (Exception e)
             {
@@ -209,17 +230,16 @@ namespace PortainerApi
                 if (resp.IsSuccessStatusCode)
                 {
                     var stream = await resp.Content.ReadAsStreamAsync();
-                    using StreamReader sr = new StreamReader(stream);
-                    using var jsonResult = new JsonTextReader(sr);
-                    JsonSerializer ser = new JsonSerializer() { NullValueHandling = NullValueHandling.Ignore };
-                    return ser.Deserialize<IEnumerable<SwarmService>>(jsonResult);
+                    using (StreamReader sr = new StreamReader(stream))
+                    {
+                        using (var jsonResult = new JsonTextReader(sr))
+                        {
+                            JsonSerializer ser = new JsonSerializer() { NullValueHandling = NullValueHandling.Ignore };
+                            return ser.Deserialize<IEnumerable<SwarmService>>(jsonResult);
+                        }
+                    }
                 }
-                else
-                {
-                    Console.WriteLine("No Success. GetServicesAsync: " + resp.ReasonPhrase);
-                    return null;
-                }
-
+                return null;
             }
             catch (Exception e)
             {
@@ -233,7 +253,7 @@ namespace PortainerApi
         /// </summary>
         /// <param name="serviceName">Service ID for searching</param>
         /// <returns></returns>
-        async private Task<List<DockerTask>> GetTaskByServiceIDAsync(string serviceID)
+        async private Task<IEnumerable<TaskResponse>> GetTaskByServiceIDAsync(string serviceID)
         {
             try
             {
@@ -245,16 +265,17 @@ namespace PortainerApi
                 var resp = await client.GetAsync(portainerEndpoint);
                 if (resp.IsSuccessStatusCode)
                 {
-                    var bytes = await resp.Content.ReadAsByteArrayAsync();
-                    List<DockerTask> taskJson = System.Text.Json.JsonSerializer.Deserialize<List<DockerTask>>(bytes);
-                    return taskJson;
+                    var stream = await resp.Content.ReadAsStreamAsync();
+                    using (StreamReader sr = new StreamReader(stream))
+                    {
+                        using (var jsonResult = new JsonTextReader(sr))
+                        {
+                            JsonSerializer ser = new JsonSerializer() { NullValueHandling = NullValueHandling.Ignore };
+                            return ser.Deserialize<IEnumerable<TaskResponse>>(jsonResult);
+                        }
+                    }
                 }
-                else
-                {
-                    Console.WriteLine("No Success. GetTaskByIDAsync: " + resp.ReasonPhrase);
-                    return null;
-                }
-
+                return null;
             }
             catch (Exception e)
             {
@@ -268,7 +289,7 @@ namespace PortainerApi
         /// </summary>
         /// <param name="taskID">taskId for searching</param>
         /// <returns></returns>
-        async private Task<DockerTask> GetTaskByIDAsync(string taskID)
+        async private Task<TaskResponse> GetTaskByIDAsync(string taskID)
         {
             try
             {
@@ -280,15 +301,17 @@ namespace PortainerApi
                 var resp = await client.GetAsync(portainerEndpoint);
                 if (resp.IsSuccessStatusCode)
                 {
-                    var bytes = await resp.Content.ReadAsByteArrayAsync();
-                    return System.Text.Json.JsonSerializer.Deserialize<DockerTask>(bytes);
+                    var stream = await resp.Content.ReadAsStreamAsync();
+                    using (StreamReader sr = new StreamReader(stream))
+                    {
+                        using (var jsonResult = new JsonTextReader(sr))
+                        {
+                            JsonSerializer ser = new JsonSerializer() { NullValueHandling = NullValueHandling.Ignore };
+                            return ser.Deserialize<TaskResponse>(jsonResult);
+                        }
+                    }
                 }
-                else
-                {
-                    Console.WriteLine("No Success. GetTaskByIDAsync: " + resp.ReasonPhrase);
-                    return null;
-                }
-
+                return null;
             }
             catch (Exception e)
             {
@@ -315,17 +338,15 @@ namespace PortainerApi
                 var resp = await client.GetAsync(portainerEndpoint);
                 if (resp.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("OK");
                     var stream = await resp.Content.ReadAsStreamAsync();
-                    using StreamReader sr = new StreamReader(stream);
-                    using var jsonResult = new JsonTextReader(sr);
-                    JsonSerializer ser = new JsonSerializer() { NullValueHandling = NullValueHandling.Ignore };
-                    return ser.Deserialize<ContainerInspectResponse>(jsonResult);
-                }
-                else
-                {
-                    Console.WriteLine(resp.ReasonPhrase);
-                    Console.WriteLine("No success. GetContainerInfoByIDAsync" + resp.ReasonPhrase);
+                    using (StreamReader sr = new StreamReader(stream))
+                    {
+                        using (var jsonResult = new JsonTextReader(sr))
+                        {
+                            JsonSerializer ser = new JsonSerializer() { NullValueHandling = NullValueHandling.Ignore };
+                            return ser.Deserialize<ContainerInspectResponse>(jsonResult);
+                        }
+                    }
                 }
                 return containerInfo;
             }

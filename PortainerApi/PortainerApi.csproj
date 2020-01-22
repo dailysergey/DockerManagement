@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>netcoreapp2.2</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Docker.DotNet" Version="3.125.2" />
     <PackageReference Include="Microsoft.AspNetCore.Connections.Abstractions" Version="2.2.0" />
     <PackageReference Include="Microsoft.NETCore.Platforms" Version="3.1.0" />
     <PackageReference Include="Microsoft.NETCore.Targets" Version="2.0.0" />
@@ -24,28 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DockerEngineApi\DockerEngineApi.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="ReactiveProperty">
-      <HintPath>bin\Debug\netcoreapp3.1\ReactiveProperty.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Reactive.Core">
-      <HintPath>bin\Debug\netcoreapp3.1\System.Reactive.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Reactive.Interfaces">
-      <HintPath>bin\Debug\netcoreapp3.1\System.Reactive.Interfaces.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Reactive.Linq">
-      <HintPath>bin\Debug\netcoreapp3.1\System.Reactive.Linq.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Reactive.PlatformServices">
-      <HintPath>bin\Debug\netcoreapp3.1\System.Reactive.PlatformServices.dll</HintPath>
-    </Reference>
-    <Reference Include="Utf8Json">
-      <HintPath>bin\Debug\netcoreapp3.1\Utf8Json.dll</HintPath>
-    </Reference>
+    
   </ItemGroup>
 
 </Project>
