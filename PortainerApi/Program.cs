@@ -33,6 +33,86 @@ namespace PortainerApi
             }
         }
 
+        /// <summary>
+        /// Testing project 
+        /// Main Endpoint of application
+        /// <para>1. Authorize</para>
+        /// <para>2. Get list of all working containers</para>
+        /// <para>3. Foreach container inspect detailed healthcheck</para>
+        /// </summary>
+        /// <param name="hostAddress">Remote IP address</param>
+        /// <returns>List of containers with their healthchecks</returns>
+        async public Task<List<MonitorPad>> QueryPerform(string hostAddress)
+        {
+            try
+            {
+                using (client = new HttpClient())
+                {
+                    client.BaseAddress = new Uri($"http://{hostAddress}:9000");
+                    PortainerAuthAsync();
+                    if (string.IsNullOrEmpty(JWT))
+                        throw new Exception("UnAuthorized!");
+                    var nodes = await GetNodesAsync();
+                    List<MonitorPad> monitorStates = new List<MonitorPad>();
+
+                    var services = await GetServicesAsync();
+                    foreach (var service in services)
+                    {
+                        MonitorPad monitorState = new MonitorPad
+                        {
+                            ServiceName = service.Spec.Name,
+                            ServiceCreatedAt = service.CreatedAt,
+                            ServiceID = service.ID
+                        };
+
+                        var tasksByID = await GetTaskByServiceIDAsync(service.ID);
+                        monitorState.desiredAppCount = tasksByID.Count > 0 ? tasksByID.Count : 0;
+                        foreach (var task in tasksByID)
+                        {
+                            if (task.Status.State.Equals("running"))
+                            {
+                                monitorState.isAlive = true;
+                                monitorState.actualAppCount++;
+                                monitorState.StackName = nodes.Find(x => x.ID.Equals(task.NodeID)).Description.Hostname;
+                                monitorState.ContainerID = task.Status.ContainerStatus.ContainerID;
+                                var containerInfo = await GetContainerInfoByIDAsync(task.Status.ContainerStatus.ContainerID);
+                                if (containerInfo != null)
+                                {
+                                    monitorState.containerCreatedAt = containerInfo.Created;
+                                    monitorState.healthStatus = containerInfo.State.Status;
+                                    var healthContainer = containerInfo.State.Health;
+                                    if (healthContainer != null && healthContainer.Log.Count > 0)
+                                    {
+                                        monitorState.healthOutput = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].Output;
+                                        monitorState.lastHealthCheck = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].End;
+                                    }
+
+                                }
+                                else
+                                {
+                                    var taskContainer = await GetTaskByIDAsync(task.ID);
+                                    monitorState.containerCreatedAt = taskContainer.CreatedAt;
+                                    monitorState.healthStatus = task.Status.State;
+                                }
+                            }
+                        }
+                        if (service.Spec.Labels != null && service.Spec.Labels.Count > 0 && service.Spec.Labels.ContainsKey("com.docker.stack.namespace"))
+                        {
+                            monitorState.StackName = service.Spec.Labels["com.docker.stack.namespace"];
+                            if (service.Spec.Labels.ContainsKey("com.docker.stack.image"))
+                                monitorState.ImageName = service.Spec.Labels["com.docker.stack.image"];
+                        }
+                        monitorStates.Add(monitorState);
+                    }
+                    return monitorStates;
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                throw;
+            }
+        }
 
         /// <summary>
         /// Authorization via Portainer API
@@ -78,46 +158,6 @@ namespace PortainerApi
             }
         }
 
-        /// <summary>
-        /// Getting list of containers 
-        /// </summary>
-        /// <returns></returns>
-        //async private Task<List<Containers>> GetContainersAsync()
-        //{
-        //    try
-        //    {
-        //        client.DefaultRequestHeaders.Clear();
-        //        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        //        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", JWT);
-        //        var portainerEndpoint = new Uri(client.BaseAddress + "api/endpoints/1/docker/containers/json?all=1");
-        //        var resp = await client.GetAsync(portainerEndpoint);
-        //        if (resp.IsSuccessStatusCode)
-        //        {
-        //            var stream = await resp.Content.ReadAsStreamAsync();
-        //            using (StreamReader sr = new StreamReader(stream))
-        //            {
-        //                using (var jsonResult = new JsonTextReader(sr))
-        //                {
-        //                    JsonSerializer ser = new JsonSerializer();
-        //                    List<Container> containers = ser.Deserialize<List<Container>>(jsonResult);
-        //                    Console.WriteLine("Количество контейнеров: " + containers.Count);
-        //                    return containers;
-        //                }
-        //            }
-        //        }
-        //        else
-        //        {
-        //            Console.WriteLine("No Success. GetContainersAsync: "+resp.ReasonPhrase);
-        //            return null;
-        //        }
-
-        //    }
-        //    catch(Exception e)
-        //    {
-        //        Console.WriteLine(e.Message);
-        //        throw;
-        //    }
-        //}
 
         /// <summary>
         /// Getting list of nodes 
@@ -296,85 +336,5 @@ namespace PortainerApi
             }
         }
 
-        /// <summary>
-        /// Testing project 
-        /// Main Endpoint of application
-        /// <para>1. Authorize</para>
-        /// <para>2. Get list of all working containers</para>
-        /// <para>3. Foreach container inspect detailed healthcheck</para>
-        /// </summary>
-        /// <param name="hostAddress">Remote IP address</param>
-        /// <returns>List of containers with their healthchecks</returns>
-        async public Task<List<MonitorPad>> QueryPerform(string hostAddress)
-        {
-            try
-            {
-                using (client = new HttpClient())
-                {
-                    client.BaseAddress = new Uri($"http://{hostAddress}:9000");
-                    PortainerAuthAsync();
-                    if (string.IsNullOrEmpty(JWT))
-                        throw new Exception("UnAuthorized!");
-                    var nodes = await GetNodesAsync();
-                    List<MonitorPad> monitorStates = new List<MonitorPad>();
-
-                    var services = await GetServicesAsync();
-                    foreach (var service in services)
-                    {
-                        MonitorPad monitorState = new MonitorPad
-                        {
-                            ServiceName = service.Spec.Name,
-                            ServiceCreatedAt = service.CreatedAt,
-                            ServiceID = service.ID
-                        };
-
-                        var tasksByID = await GetTaskByServiceIDAsync(service.ID);
-                        monitorState.desiredAppCount = tasksByID.Count > 0 ? tasksByID.Count : 0;
-                        foreach (var task in tasksByID)
-                        {
-                            if (task.Status.State.Equals("running"))
-                            {
-                                monitorState.isAlive = true;
-                                monitorState.actualAppCount++;
-                                monitorState.StackName = nodes.Find(x => x.ID.Equals(task.NodeID)).Description.Hostname;
-                                monitorState.ContainerID = task.Status.ContainerStatus.ContainerID;
-                                var containerInfo = await GetContainerInfoByIDAsync(task.Status.ContainerStatus.ContainerID);
-                                if (containerInfo != null)
-                                {
-                                    monitorState.containerCreatedAt = containerInfo.Created;
-                                    monitorState.healthStatus = containerInfo.State.Status;
-                                    var healthContainer = containerInfo.State.Health;
-                                    if (healthContainer != null && healthContainer.Log.Count > 0)
-                                    {
-                                        monitorState.healthOutput = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].Output;
-                                        monitorState.lastHealthCheck = containerInfo.State.Health.Log[healthContainer.Log.Count - 1].End;
-                                    }
-
-                                }
-                                else
-                                {
-                                    var taskContainer = await GetTaskByIDAsync(task.ID);
-                                    monitorState.containerCreatedAt = taskContainer.CreatedAt;
-                                    monitorState.healthStatus = task.Status.State;
-                                }
-                            }
-                        }
-                        if (service.Spec.Labels != null && service.Spec.Labels.Count > 0 && service.Spec.Labels.ContainsKey("com.docker.stack.namespace"))
-                        {
-                            monitorState.StackName = service.Spec.Labels["com.docker.stack.namespace"];
-                            if (service.Spec.Labels.ContainsKey("com.docker.stack.image"))
-                                monitorState.ImageName = service.Spec.Labels["com.docker.stack.image"];
-                        }
-                        monitorStates.Add(monitorState);
-                    }
-                    return monitorStates;
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-                throw;
-            }
-        }
     }
 }
