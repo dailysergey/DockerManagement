@@ -2,7 +2,6 @@
 using Newtonsoft.Json;
 using PortainerApi.Models;
 using PortainerApi.Models.Auth;
-using PortainerApi.Models.Node;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -23,7 +22,7 @@ namespace PortainerApi
             {
                 string hostAddress = "192.168.1.30";//"ip_ubuntu_machine";
                 PortainerApi p = new PortainerApi(hostAddress);
-                await p.QueryPerform();
+                await p.ExecuteAsync();
             }
             catch (Exception e)
             {
@@ -54,7 +53,7 @@ namespace PortainerApi
         /// </summary>
         /// <param name="hostAddress">Remote IP address</param>
         /// <returns>IEnumerable of MonitorPad with their healthchecks</returns>
-        async public Task<IEnumerable<MonitorPad>> QueryPerform()
+        async public Task<IEnumerable<MonitorPad>> ExecuteAsync()
         {
             try
             {
@@ -78,6 +77,7 @@ namespace PortainerApi
                     //Заполняем информацию об одном сервисе
                     MonitorPad monitorState = new MonitorPad
                     {
+
                         ServiceName = service.Spec.Name,
                         ServiceCreatedAt = service.CreatedAt,
                         ServiceUpdatedAt = service.UpdatedAt,
@@ -85,16 +85,25 @@ namespace PortainerApi
                     };
                     //Получаем информацию о задачах, которые обрабатывают этот сервис
                     var tasksByID = await GetTaskByServiceIDAsync(service.ID);
-
+                    if (service.Endpoint.Ports != null && service.Endpoint.Ports.Count > 0)
+                    {
+                        monitorState.ServicePort = service.Endpoint.Ports;
+                    }
                     foreach (var task in tasksByID)
                     {
                         if (task.Status.State == TaskState.Running || task.Status.State == TaskState.Complete)
                         {
+
                             monitorState.isAlive = true;
                             monitorState.actualAppCount++;
                             monitorState.ContainerID = task.Status.ContainerStatus.ContainerID;
+
+                            var node = await GetNodeByIDAsync(task.NodeID);
+                            monitorState.taskNode = node.Description.Hostname;
+
                             monitorState.taskState = task.Status.State;
-                            monitorState.desiredAppCount = service.Spec.TaskTemplate.Placement.Constraints.Count;
+                            monitorState.desiredAppCount += service.Spec.TaskTemplate.Placement.Constraints.Count;
+                            monitorState.ServiceType = service.Spec.Mode;
                             //Получение Количества задач
                             if (task.Slot > 0)
                                 monitorState.desiredAppCount = (int)task.Slot;
@@ -188,9 +197,8 @@ namespace PortainerApi
         /// <summary>
         /// Getting list of nodes 
         /// </summary>
-        /// <param name="jwt">Token for authorization</param>
         /// <returns></returns>
-        async private Task<IEnumerable<Node>> GetNodesAsync()
+        async private Task<IEnumerable<NodeListResponse>> GetNodesAsync()
         {
             try
             {
@@ -202,7 +210,34 @@ namespace PortainerApi
                 if (resp.IsSuccessStatusCode)
                 {
                     var bytes = await resp.Content.ReadAsByteArrayAsync();
-                    return System.Text.Json.JsonSerializer.Deserialize<List<Node>>(bytes);
+                    return System.Text.Json.JsonSerializer.Deserialize<List<NodeListResponse>>(bytes);
+                }
+                return null;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Getting node by ID
+        /// </summary>
+        /// <returns></returns>
+        async private Task<NodeListResponse> GetNodeByIDAsync(string nodeID)
+        {
+            try
+            {
+                client.DefaultRequestHeaders.Clear();
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", JWT);
+                var portainerEndpoint = new Uri(client.BaseAddress + $"api/endpoints/1/docker/nodes/{nodeID}");
+                var resp = await client.GetAsync(portainerEndpoint);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var bytes = await resp.Content.ReadAsByteArrayAsync();
+                    return System.Text.Json.JsonSerializer.Deserialize<NodeListResponse>(bytes);
                 }
                 return null;
             }

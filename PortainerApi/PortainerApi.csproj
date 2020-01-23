@@ -7,11 +7,17 @@
 
   <ItemGroup>
     <Compile Remove="Models\Container\**" />
+    <Compile Remove="Models\Node\**" />
     <Compile Remove="Models\Services\**" />
+    <Compile Remove="Models\Task\**" />
     <EmbeddedResource Remove="Models\Container\**" />
+    <EmbeddedResource Remove="Models\Node\**" />
     <EmbeddedResource Remove="Models\Services\**" />
+    <EmbeddedResource Remove="Models\Task\**" />
     <None Remove="Models\Container\**" />
+    <None Remove="Models\Node\**" />
     <None Remove="Models\Services\**" />
+    <None Remove="Models\Task\**" />
   </ItemGroup>
 
   <ItemGroup>
