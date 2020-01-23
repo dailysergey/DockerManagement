@@ -93,7 +93,7 @@ namespace PortainerApi
                     {
                         if (task.Status.State == TaskState.Running || task.Status.State == TaskState.Complete)
                         {
-
+                            monitorState.taskID = task.ID;
                             monitorState.isAlive = true;
                             monitorState.actualAppCount++;
                             monitorState.ContainerID = task.Status.ContainerStatus.ContainerID;
