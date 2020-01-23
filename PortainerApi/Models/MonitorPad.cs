@@ -1,26 +1,35 @@
 ﻿using Docker.DotNet.Models;
 using System;
+using System.Collections.Generic;
 
 namespace PortainerApi.Models
 {
     public class MonitorPad
     {
-        public string StackName { get; set; }
-        public string ServiceName { get; set; }
-        public DateTime ServiceCreatedAt { get; set; }
-        public DateTime ServiceUpdatedAt { get; set; }
-        public string ServiceID { get; set; }
-
+        #region Service INFO
+        public string StackName;
+        public string ServiceName;
+        public DateTime ServiceCreatedAt;
+        public DateTime ServiceUpdatedAt;
+        public string ServiceID;
+        public IList<PortConfig> ServicePort;
+        public ServiceMode ServiceType;
+        #endregion
+        #region Container INFO
         public bool isAlive;
         public DateTime containerCreatedAt;
-
         public string healthStatus;
         public string healthOutput;
         public DateTime lastHealthCheck;
-        public TaskState taskState;
-        public string ImageName { get; set; }
+        public string ContainerID;
+        public string ImageName;
+        #endregion
 
-        public string ContainerID { get; set; }
+        #region taskINFO
+        public TaskState taskState;
+        public string taskID;
+        public string taskNode;
+        #endregion
 
         public int desiredAppCount;
         public int actualAppCount;
