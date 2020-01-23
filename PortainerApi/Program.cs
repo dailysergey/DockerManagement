@@ -103,12 +103,15 @@ namespace PortainerApi
 
                             monitorState.taskState = task.Status.State;
                             monitorState.desiredAppCount += service.Spec.TaskTemplate.Placement.Constraints.Count;
-                            monitorState.ServiceType = service.Spec.Mode;
-                            //Получение Количества задач
-                            if (task.Slot > 0)
-                                monitorState.desiredAppCount = (int)task.Slot;
-                            else
-                                monitorState.desiredAppCount = task.Spec.Placement.Constraints.Count;
+                            
+                            //monitorState.ServiceType = service.Spec.Mode;
+
+                            ////Получение Количества задач
+                            //if (task.Slot > 0)
+                            //    monitorState.desiredAppCount = (int)task.Slot;
+                            //else
+                            //    monitorState.desiredAppCount = task.Spec.Placement.Constraints.Count;
+
                             //Выставим в качестве времени создания контейнера - время создания задачи
                             monitorState.containerCreatedAt = task.CreatedAt;
 
