@@ -20,7 +20,7 @@ namespace PortainerApi
         {
             try
             {
-                string hostAddress = "192.168.1.30";//"ip_ubuntu_machine";
+                string hostAddress = "192.168.1.27";// "portainer_portainer";//"ip_ubuntu_machine";
                 PortainerApi p = new PortainerApi(hostAddress);
                 await p.ExecuteAsync();
             }
@@ -39,9 +39,10 @@ namespace PortainerApi
         {
             hostAddress = _hostAddress;
             client = new HttpClient();
-            client.BaseAddress = new Uri($"http://{hostAddress}:9000");
+            var url = new UriBuilder(hostAddress);
+            url.Port = 9000;
+            client.BaseAddress =url.Uri;
             PortainerAuthAsync();
-
         }
 
         /// <summary>
@@ -102,15 +103,8 @@ namespace PortainerApi
                             monitorState.taskNode = node.Description.Hostname;
 
                             monitorState.taskState = task.Status.State;
+                            if(service.Spec != null && service.Spec.TaskTemplate !=null && service.Spec.TaskTemplate.Placement != null && service.Spec.TaskTemplate.Placement.Constraints != null)
                             monitorState.desiredAppCount += service.Spec.TaskTemplate.Placement.Constraints.Count;
-                            
-                            //monitorState.ServiceType = service.Spec.Mode;
-
-                            ////Получение Количества задач
-                            //if (task.Slot > 0)
-                            //    monitorState.desiredAppCount = (int)task.Slot;
-                            //else
-                            //    monitorState.desiredAppCount = task.Spec.Placement.Constraints.Count;
 
                             //Выставим в качестве времени создания контейнера - время создания задачи
                             monitorState.containerCreatedAt = task.CreatedAt;
