@@ -17,7 +17,8 @@ namespace DockerEngineApi
         static async Task Main()
         {
             Program p = new Program();
-            await p.QueryPerform();
+            using (DockerClient client = new DockerClientConfiguration(new Uri("http://192.168.1.30:2375")).CreateClient())
+                await p.QueryPerform(client);
         }
 
         /// <summary>
@@ -40,18 +41,13 @@ namespace DockerEngineApi
         /// Handmade metod to get count of services
         /// </summary>
         /// <returns></returns>
-        private async Task<int> GetServicesCount()
+        private async Task<int> GetServicesCount(DockerClient client)
         {
-            using (DockerClient _dockerClient = new DockerClientConfiguration(new Uri("unix:///var/run/docker.sock")).CreateClient())
-            {
-                IEnumerable<SwarmService> services = await _dockerClient.Swarm.ListServicesAsync();
-                var servicesCount = 0;
-                foreach(var service in services)
-                {
-                    servicesCount++;
-                }
-                return servicesCount;
-            }
+            IEnumerable<SwarmService> services = await client.Swarm.ListServicesAsync();
+            var servicesCount = 0;
+            foreach(var service in services)
+                servicesCount++;
+            return servicesCount;
         }
 
         /// <summary>
@@ -59,14 +55,13 @@ namespace DockerEngineApi
         /// Main Endpoint of application
         /// </summary>
         /// <returns>List of containers with their healthchecks</returns>
-        async private Task<List<ContainerMonitor>> QueryPerform()
+        async private Task<List<ContainerMonitor>> QueryPerform(DockerClient client)
         {
             try
             {
+                var servicesCount = await GetServicesCount(client);
                 Console.WriteLine("Entered into QueryPerform!");
-                Console.WriteLine("SERVICES:" + await GetServicesCount());
-                // Default Docker Engine on Linux
-                DockerClient client = new DockerClientConfiguration(new Uri("unix:///var/run/docker.sock")).CreateClient();
+                Console.WriteLine("SERVICES:" + servicesCount);
                 List<ContainerMonitor> monitor = new List<ContainerMonitor>();
 
                 IEnumerable<SwarmService> services = await client.Swarm.ListServicesAsync();
@@ -128,17 +123,6 @@ namespace DockerEngineApi
                                             //Error can happen here if container isn't  on the same machine as leader node
                                             Console.WriteLine(e.Message);
                                             continue;
-                                            //Bad idea to get inforamtion about stack from portainer api in catc
-                                            //Console.WriteLine(task.ID);
-                                            //Console.WriteLine(e.Message);
-                                            //using (HttpClient portainerApi = new HttpClient())
-                                            //{
-                                            //    portainerApi.DefaultRequestHeaders.Add("accept", "application/json");
-                                            //    portainerApi.DefaultRequestHeaders.Add("Content-Type", "application/json");
-                                            //    var model = "{Username:admin, Password:Aa123456}";
-                                            //    var stringContent = new StringContent(JsonConvert.SerializeObject(model), Encoding.UTF8, "application/json");
-                                            //    var jwt = await portainerApi.PostAsync($"http://{hostAddress}/api/auth", stringContent);
-                                            //}
                                         }
 
                                         if (!string.IsNullOrEmpty(containerHealthInspect.State.Status))
@@ -208,7 +192,7 @@ namespace DockerEngineApi
                     isAlive = false;
                     workingTasks = 0;
                 }
-                Console.WriteLine("SERVICES:" + await GetServicesCount());
+                Console.WriteLine("SERVICES:" + servicesCount);
                 foreach (var mon in monitor)
                 {
                     Console.WriteLine(mon.createdAt);
