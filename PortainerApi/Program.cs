@@ -20,7 +20,7 @@ namespace PortainerApi
         {
             try
             {
-                string hostAddress = "192.168.1.27";// "portainer_portainer";//"ip_ubuntu_machine";
+                string hostAddress = "192.168.1.27";
                 PortainerApi p = new PortainerApi(hostAddress);
                 await p.ExecuteAsync();
             }
@@ -35,6 +35,8 @@ namespace PortainerApi
         private string JWT;
         private HttpClient client;
         private string hostAddress;
+        private string login = "admin";
+        private string password = "Aa123456";
         public PortainerApi(string _hostAddress)
         {
             hostAddress = _hostAddress;
@@ -156,8 +158,8 @@ namespace PortainerApi
             {
                 var model = new Credentials
                 {
-                    Username = "admin",
-                    Password = "Aa123456"
+                    Username = login,
+                    Password = password
                 };
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
